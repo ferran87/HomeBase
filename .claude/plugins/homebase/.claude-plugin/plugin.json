@@ -1,0 +1,5 @@
+{
+  "name": "homebase",
+  "description": "Project-specific skills and commands for the HomeBase voice-first family app",
+  "author": { "name": "HomeBase" }
+}

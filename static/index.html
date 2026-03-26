@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HomeBase</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🏠 HomeBase</h1>
+
+    <!-- Speaker selection -->
+    <div class="speaker-toggle" id="speaker-toggle">
+      <!-- Populated by app.js from /api/users -->
+    </div>
+
+    <!-- Mic button -->
+    <div class="mic-wrap">
+      <button id="mic-btn" title="Hold to record">🎙️</button>
+    </div>
+
+    <div id="status"></div>
+
+    <!-- Confirmation card (hidden until voice processed) -->
+    <div id="confirm-card">
+      <span id="confirm-tag" class="tag"></span>
+      <p id="confirm-transcription" class="transcription"></p>
+      <dl id="confirm-extracted" class="extracted"></dl>
+      <div class="card-actions">
+        <button class="btn btn-confirm" id="btn-confirm">Save ✓</button>
+        <button class="btn btn-discard" id="btn-discard">Discard</button>
+      </div>
+    </div>
+
+    <!-- Night shift widget -->
+    <div id="shift-widget">
+      <h2>Tonight's shift</h2>
+      <div class="shift-toggle" id="shift-toggle">
+        <!-- Populated by app.js -->
+      </div>
+      <div class="shift-history" id="shift-history"></div>
+    </div>
+
+    <!-- Daily feed -->
+    <div id="feed">
+      <h2>Today</h2>
+      <div id="feed-items"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

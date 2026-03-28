@@ -38,7 +38,7 @@ async def get_tasks(
 async def mark_task_done(task_id: str, db: Session = Depends(get_db)) -> dict:
     """Mark a task as done."""
     import uuid
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     task = db.get(HouseholdTask, uuid.UUID(task_id))
     if not task:
@@ -46,6 +46,6 @@ async def mark_task_done(task_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.status = "done"
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "done", "task_id": task_id}

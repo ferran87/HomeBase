@@ -1,30 +1,35 @@
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.services.claude_voice import process_audio
+from app.services.claude_voice import classify_text
 from app.services.entry_router import route_confirmed_entry
 from app.models.voice_entry import VoiceEntry
 
 router = APIRouter()
 
 
-@router.post("/")
-async def receive_voice(
-    audio: UploadFile = File(...),
-    speaker_id: str = Form(...),
+class ClassifyRequest(BaseModel):
+    text: str
+    speaker_id: str
+    language_hint: str = ""
+
+
+@router.post("/classify")
+async def classify_voice_text(
+    payload: ClassifyRequest,
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Step 1: Receive audio from the browser, send to Claude API for
-    transcription + classification. Returns the classified result for
-    the user to review in the confirmation card. Does NOT write to DB yet.
+    Receive transcribed text from the browser's Speech Recognition API,
+    send to Claude for classification, and return the result for confirmation.
     """
-    audio_bytes = await audio.read()
-    result = await process_audio(
-        audio_bytes=audio_bytes,
-        speaker_id=uuid.UUID(speaker_id),
+    result = await classify_text(
+        transcription=payload.text,
+        speaker_id=uuid.UUID(payload.speaker_id),
+        language_hint=payload.language_hint,
         db=db,
     )
     return result
@@ -36,7 +41,7 @@ async def confirm_entry(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Step 2: User has reviewed and confirmed the classified result.
+    User has reviewed and confirmed the classified result.
     Mark the voice_entry as confirmed and route to the appropriate table.
     """
     entry = db.get(VoiceEntry, uuid.UUID(voice_entry_id))
@@ -50,17 +55,36 @@ async def confirm_entry(
     return {"status": "saved", "routed_to": routed}
 
 
+@router.delete("/discard")
+async def discard_entry(
+    voice_entry_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Discard an unconfirmed voice entry (removes the orphan row)."""
+    entry = db.get(VoiceEntry, uuid.UUID(voice_entry_id))
+    if not entry:
+        raise HTTPException(status_code=404, detail="Voice entry not found")
+    if entry.confirmed:
+        raise HTTPException(status_code=400, detail="Cannot discard a confirmed entry")
+    db.delete(entry)
+    db.commit()
+    return {"status": "discarded", "voice_entry_id": voice_entry_id}
+
+
 @router.get("/today")
 async def get_today_feed(db: Session = Depends(get_db)) -> list[dict]:
     """Return all confirmed voice entries from today, ordered by time."""
-    from datetime import date
-    from sqlalchemy import cast, Date
+    from datetime import date, datetime, timedelta, timezone
+
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    tomorrow_start = today_start + timedelta(days=1)
 
     entries = (
         db.query(VoiceEntry)
         .filter(
             VoiceEntry.confirmed.is_(True),
-            cast(VoiceEntry.created_at, Date) == date.today(),
+            VoiceEntry.created_at >= today_start,
+            VoiceEntry.created_at < tomorrow_start,
         )
         .order_by(VoiceEntry.created_at.asc())
         .all()

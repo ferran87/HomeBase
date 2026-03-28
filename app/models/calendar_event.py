@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 
 from sqlalchemy import Date, Time, Text, Integer, String, Boolean, DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +21,6 @@ class CalendarEvent(Base):
     duration_min: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     google_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     voice_entry: Mapped["VoiceEntry"] = relationship(back_populates="calendar_event")  # noqa: F821

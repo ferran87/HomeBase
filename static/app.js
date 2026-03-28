@@ -2,8 +2,8 @@
 
 let selectedSpeakerId = null;
 let pendingVoiceEntryId = null;
-let mediaRecorder = null;
-let audioChunks = [];
+let recognition = null;
+let isListening = false;
 let users = [];
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ async function init() {
 
 async function loadUsers() {
   try {
-    const res = await fetch("/api/users");
+    const res = await fetch("/api/users/");
     users = await res.json();
     renderSpeakerToggle();
     renderShiftToggle();
@@ -47,54 +47,107 @@ function selectSpeaker(id, btn) {
   btn.classList.add("active");
 }
 
-// ─── Mic button + MediaRecorder ───────────────────────────────────────────────
+// ─── Mic button + Web Speech API ──────────────────────────────────────────────
 
 function setupMicButton() {
   const btn = document.getElementById("mic-btn");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  btn.addEventListener("mousedown", startRecording);
-  btn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
-  btn.addEventListener("mouseup", stopRecording);
-  btn.addEventListener("touchend", (e) => { e.preventDefault(); stopRecording(); });
-  btn.addEventListener("mouseleave", stopRecording);
+  if (!SpeechRecognition) {
+    setStatus("Speech recognition not supported in this browser. Use Chrome or Edge.");
+    btn.disabled = true;
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  // Auto-detect: browser will pick up the spoken language from these
+  // Catalan, Spanish, English
+  recognition.lang = "ca-ES";
+
+  let finalTranscript = "";
+  let interimTranscript = "";
+
+  recognition.onresult = (event) => {
+    interimTranscript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += t + " ";
+      } else {
+        interimTranscript += t;
+      }
+    }
+    setStatus(finalTranscript + interimTranscript || "Listening…");
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === "no-speech") {
+      setStatus("No speech detected. Try again.");
+    } else {
+      setStatus(`Speech error: ${event.error}`);
+    }
+    stopListening();
+  };
+
+  recognition.onend = () => {
+    if (isListening) {
+      // Stopped by user — process the result
+      isListening = false;
+      btn.classList.remove("recording");
+      if (finalTranscript.trim()) {
+        processTranscription(finalTranscript.trim());
+      } else {
+        setStatus("No speech captured. Try again.");
+      }
+    }
+  };
+
+  btn.addEventListener("click", () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening(finalTranscript = "");
+    }
+  });
 }
 
-async function startRecording() {
+function startListening() {
   if (!selectedSpeakerId) {
     setStatus("Tap your name first.");
     return;
   }
-  if (mediaRecorder && mediaRecorder.state === "recording") return;
+  if (isListening) return;
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioChunks = [];
-  mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-  mediaRecorder.onstop = processAudio;
-  mediaRecorder.start();
-
+  isListening = true;
   document.getElementById("mic-btn").classList.add("recording");
-  setStatus("Recording…");
+  setStatus("Listening…");
+  recognition.start();
 }
 
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach((t) => t.stop());
-    document.getElementById("mic-btn").classList.remove("recording");
-    setStatus("Processing…");
-  }
+function stopListening() {
+  if (!isListening) return;
+  recognition.stop();
 }
 
-async function processAudio() {
-  const blob = new Blob(audioChunks, { type: "audio/webm" });
-  const form = new FormData();
-  form.append("audio", blob, "recording.webm");
-  form.append("speaker_id", selectedSpeakerId);
-
+async function processTranscription(text) {
+  setStatus("Classifying…");
   try {
-    const res = await fetch("/api/voice/", { method: "POST", body: form });
-    if (!res.ok) throw new Error(await res.text());
+    const res = await fetch("/api/voice/classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: text,
+        speaker_id: selectedSpeakerId,
+        language_hint: recognition.lang.split("-")[0],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText);
+    }
     const data = await res.json();
     pendingVoiceEntryId = data.voice_entry_id;
     renderConfirmCard(data);
@@ -141,7 +194,12 @@ document.getElementById("btn-confirm").onclick = async () => {
   }
 };
 
-document.getElementById("btn-discard").onclick = () => {
+document.getElementById("btn-discard").onclick = async () => {
+  if (pendingVoiceEntryId) {
+    try {
+      await fetch(`/api/voice/discard?voice_entry_id=${pendingVoiceEntryId}`, { method: "DELETE" });
+    } catch (_) {}
+  }
   hideConfirmCard();
   setStatus("Discarded.");
   pendingVoiceEntryId = null;
@@ -149,6 +207,14 @@ document.getElementById("btn-discard").onclick = () => {
 
 function hideConfirmCard() {
   document.getElementById("confirm-card").classList.remove("visible");
+}
+
+// ─── Language selector ────────────────────────────────────────────────────────
+
+function setLanguage(lang) {
+  if (recognition) recognition.lang = lang;
+  document.querySelectorAll(".lang-btn").forEach((b) => b.classList.remove("active"));
+  document.querySelector(`.lang-btn[data-lang="${lang}"]`)?.classList.add("active");
 }
 
 // ─── Night shift widget ───────────────────────────────────────────────────────
@@ -192,7 +258,6 @@ async function loadShiftHistory() {
       .map((s) => `<div class="shift-row"><span>${s.shift_date}</span><span>${userMap[s.on_duty] || s.on_duty}</span></div>`)
       .join("");
 
-    // Highlight tonight's active shift
     const today = new Date().toISOString().split("T")[0];
     const tonight = shifts.find((s) => s.shift_date === today);
     if (tonight) {

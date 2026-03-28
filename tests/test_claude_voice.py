@@ -5,16 +5,15 @@ stores an unconfirmed VoiceEntry in the DB.
 """
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.models.user import User
 from app.models.voice_entry import VoiceEntry
-from app.services.claude_voice import process_audio
+from app.services.claude_voice import classify_text
 
 BABY_RESPONSE = {
-    "transcription": "La nena s'ha despertat a les 2, ha menjat a les 2:30",
     "language_detected": "ca",
     "category": "baby",
     "type": "diary_entry",
@@ -31,7 +30,6 @@ BABY_RESPONSE = {
 }
 
 DOG_RESPONSE = {
-    "transcription": "Cita del veterinario el jueves a las 10",
     "language_detected": "es",
     "category": "dog",
     "type": "calendar_event",
@@ -44,7 +42,6 @@ DOG_RESPONSE = {
 }
 
 HOUSEHOLD_RESPONSE = {
-    "transcription": "Take the bins out tomorrow",
     "language_detected": "en",
     "category": "household",
     "type": "task",
@@ -72,12 +69,27 @@ def _mock_claude(response_dict: dict):
     return mock_client
 
 
+def _patch_claude(response_dict_or_client):
+    """Context manager that patches both the Anthropic client and the API key check."""
+    client = response_dict_or_client if isinstance(response_dict_or_client, MagicMock) else _mock_claude(response_dict_or_client)
+    return patch.multiple(
+        "app.services.claude_voice",
+        anthropic=MagicMock(Anthropic=MagicMock(return_value=client)),
+        settings=MagicMock(anthropic_api_key="test-key"),
+    )
+
+
 @pytest.mark.asyncio
-async def test_baby_diary_entry_parsed_correctly(db, two_users):
+async def test_baby_diary_entry_classified_correctly(db, two_users):
     parent1, _ = two_users
 
-    with patch("app.services.claude_voice.anthropic.Anthropic", return_value=_mock_claude(BABY_RESPONSE)):
-        result = await process_audio(audio_bytes=b"fake_audio", speaker_id=parent1.id, db=db)
+    with _patch_claude(BABY_RESPONSE):
+        result = await classify_text(
+            transcription="La nena s'ha despertat a les 2, ha menjat a les 2:30",
+            speaker_id=parent1.id,
+            language_hint="ca",
+            db=db,
+        )
 
     assert result["category"] == "baby"
     assert result["type"] == "diary_entry"
@@ -88,14 +100,20 @@ async def test_baby_diary_entry_parsed_correctly(db, two_users):
     assert entry is not None
     assert entry.confirmed is False
     assert entry.category == "baby"
+    assert entry.raw_transcription == "La nena s'ha despertat a les 2, ha menjat a les 2:30"
 
 
 @pytest.mark.asyncio
-async def test_dog_calendar_event_parsed_correctly(db, two_users):
+async def test_dog_calendar_event_classified_correctly(db, two_users):
     parent1, _ = two_users
 
-    with patch("app.services.claude_voice.anthropic.Anthropic", return_value=_mock_claude(DOG_RESPONSE)):
-        result = await process_audio(audio_bytes=b"fake_audio", speaker_id=parent1.id, db=db)
+    with _patch_claude(DOG_RESPONSE):
+        result = await classify_text(
+            transcription="Cita del veterinario el jueves a las 10",
+            speaker_id=parent1.id,
+            language_hint="es",
+            db=db,
+        )
 
     assert result["category"] == "dog"
     assert result["type"] == "calendar_event"
@@ -103,11 +121,16 @@ async def test_dog_calendar_event_parsed_correctly(db, two_users):
 
 
 @pytest.mark.asyncio
-async def test_household_task_parsed_correctly(db, two_users):
+async def test_household_task_classified_correctly(db, two_users):
     parent1, _ = two_users
 
-    with patch("app.services.claude_voice.anthropic.Anthropic", return_value=_mock_claude(HOUSEHOLD_RESPONSE)):
-        result = await process_audio(audio_bytes=b"fake_audio", speaker_id=parent1.id, db=db)
+    with _patch_claude(HOUSEHOLD_RESPONSE):
+        result = await classify_text(
+            transcription="Take the bins out tomorrow",
+            speaker_id=parent1.id,
+            language_hint="en",
+            db=db,
+        )
 
     assert result["category"] == "household"
     assert result["type"] == "task"
@@ -118,16 +141,20 @@ async def test_household_task_parsed_correctly(db, two_users):
 async def test_markdown_fenced_json_is_stripped(db, two_users):
     """Claude sometimes wraps JSON in ```json ... ``` — verify it's handled."""
     parent1, _ = two_users
-    fenced_response = dict(BABY_RESPONSE)
 
     mock_content = MagicMock()
-    mock_content.text = f"```json\n{json.dumps(fenced_response)}\n```"
+    mock_content.text = f"```json\n{json.dumps(BABY_RESPONSE)}\n```"
     mock_response = MagicMock()
     mock_response.content = [mock_content]
     mock_client = MagicMock()
     mock_client.messages.create.return_value = mock_response
 
-    with patch("app.services.claude_voice.anthropic.Anthropic", return_value=mock_client):
-        result = await process_audio(audio_bytes=b"fake_audio", speaker_id=parent1.id, db=db)
+    with _patch_claude(mock_client):
+        result = await classify_text(
+            transcription="La nena s'ha despertat a les 2",
+            speaker_id=parent1.id,
+            language_hint="ca",
+            db=db,
+        )
 
     assert result["category"] == "baby"

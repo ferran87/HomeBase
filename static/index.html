@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HomeBase</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=2" />
 </head>
 <body>
   <div class="container">
@@ -15,9 +15,16 @@
       <!-- Populated by app.js from /api/users -->
     </div>
 
+    <!-- Language selector -->
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="ca-ES" onclick="setLanguage('ca-ES')">Català</button>
+      <button class="lang-btn" data-lang="es-ES" onclick="setLanguage('es-ES')">Español</button>
+      <button class="lang-btn" data-lang="en-US" onclick="setLanguage('en-US')">English</button>
+    </div>
+
     <!-- Mic button -->
     <div class="mic-wrap">
-      <button id="mic-btn" title="Hold to record">🎙️</button>
+      <button id="mic-btn" title="Tap to start/stop recording">🎙️</button>
     </div>
 
     <div id="status"></div>
@@ -49,6 +56,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2"></script>
 </body>
 </html>

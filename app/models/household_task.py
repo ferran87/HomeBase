@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from sqlalchemy import Date, Text, String, Boolean, DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,7 +21,7 @@ class HouseholdTask(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     recurrence: Mapped[str | None] = mapped_column(String(20), nullable=True)  # daily, weekly, biweekly, monthly
     status: Mapped[str] = mapped_column(TASK_STATUS, default="pending", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     voice_entry: Mapped["VoiceEntry | None"] = relationship(back_populates="household_task")  # noqa: F821

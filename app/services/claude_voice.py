@@ -1,21 +1,16 @@
 """
-Voice pipeline: send audio to Claude API for transcription + classification in one call.
+Voice pipeline: send transcribed text to Claude API for classification.
 
-Claude receives the raw audio bytes and returns a structured JSON response containing:
-  - transcription: verbatim text of what was said
-  - language_detected: "ca" | "es" | "en"
+The browser's Web Speech API handles transcription (supports Catalan, Spanish, English).
+Claude receives the text and returns structured JSON containing:
   - category: "baby" | "dog" | "household"
   - type: "diary_entry" | "calendar_event" | "task" | "reminder" | "note"
   - extracted_data: dict of structured fields (times, dates, quantities, etc.)
   - suggested_action: what the app should do with this entry
-
-Audio format: WebM/Opus blob from the browser's MediaRecorder API.
-The Anthropic SDK receives it as base64-encoded bytes.
 """
-import base64
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import anthropic
 from sqlalchemy.orm import Session
@@ -26,9 +21,8 @@ from app.models.voice_entry import VoiceEntry
 
 CLASSIFICATION_PROMPT = """\
 You are a household assistant for a family with a newborn baby girl and a dog.
-The input is a raw audio recording. Do two things:
-1. Transcribe the audio exactly as spoken.
-2. Classify and extract structured data.
+The user has spoken the following text (transcribed by speech recognition).
+Classify it and extract structured data.
 
 Family context:
 - Speaker: {speaker_name}
@@ -37,9 +31,10 @@ Family context:
 - One dog
 - Current date/time: {datetime}
 
+The text may be in Catalan, Spanish, or English. Detect the language.
+
 Respond ONLY in JSON with this exact structure:
 {{
-  "transcription": "<verbatim transcription of the audio>",
   "language_detected": "ca | es | en",
   "category": "baby | dog | household",
   "type": "diary_entry | calendar_event | task | reminder | note",
@@ -56,16 +51,16 @@ For calendar events, extract: event_title, date, time, duration_min
 """
 
 
-async def process_audio(
-    audio_bytes: bytes,
+async def classify_text(
+    transcription: str,
     speaker_id: uuid.UUID,
+    language_hint: str,
     db: Session,
 ) -> dict:
     """
-    Send audio bytes to Claude API.
-    Stores the result as an unconfirmed VoiceEntry and returns the full classification dict.
+    Send transcribed text to Claude API for classification.
+    Stores the result as an unconfirmed VoiceEntry and returns the classification dict.
     """
-    # Look up speaker and derive partner name
     speaker = db.get(User, speaker_id)
     if not speaker:
         raise ValueError(f"Speaker {speaker_id} not found")
@@ -73,41 +68,32 @@ async def process_audio(
     all_users = db.query(User).filter(User.id != speaker_id).all()
     partner_name = all_users[0].name if all_users else "Partner"
 
-    # Call Claude API with audio input
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    audio_b64 = base64.standard_b64encode(audio_bytes).decode("utf-8")
+    api_key = settings.anthropic_api_key
+    if not api_key or api_key.startswith("your_"):
+        raise ValueError(
+            "Anthropic API key not configured. "
+            "Set ANTHROPIC_API_KEY in your .env file."
+        )
+
+    client = anthropic.Anthropic(api_key=api_key)
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-4-20250514",
         max_tokens=1024,
         messages=[
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "audio/webm",
-                            "data": audio_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": CLASSIFICATION_PROMPT.format(
-                            speaker_name=speaker.name,
-                            partner_name=partner_name,
-                            datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        ),
-                    },
-                ],
+                "content": CLASSIFICATION_PROMPT.format(
+                    speaker_name=speaker.name,
+                    partner_name=partner_name,
+                    datetime=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                ) + f"\n\nTranscribed text: \"{transcription}\"",
             }
         ],
     )
 
     raw_text = response.content[0].text.strip()
 
-    # Strip markdown code fences if Claude wraps the JSON
     if raw_text.startswith("```"):
         raw_text = raw_text.split("```")[1]
         if raw_text.startswith("json"):
@@ -116,13 +102,14 @@ async def process_audio(
 
     result = json.loads(raw_text)
 
-    # Persist as unconfirmed voice entry
+    lang = result.get("language_detected", language_hint or "en")
+
     entry = VoiceEntry(
         speaker_id=speaker_id,
         category=result["category"],
         entry_type=result["type"],
-        raw_transcription=result["transcription"],
-        language_detected=result.get("language_detected"),
+        raw_transcription=transcription,
+        language_detected=lang,
         extracted_data=result,
         confirmed=False,
     )
@@ -131,4 +118,5 @@ async def process_audio(
     db.refresh(entry)
 
     result["voice_entry_id"] = str(entry.id)
+    result["transcription"] = transcription
     return result

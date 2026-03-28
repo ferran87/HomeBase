@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 
 from sqlalchemy import Date, Time, Text, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,6 +22,6 @@ class BabyLog(Base):
     medication: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     logged_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     voice_entry: Mapped["VoiceEntry"] = relationship(back_populates="baby_log")  # noqa: F821

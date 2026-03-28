@@ -36,6 +36,15 @@ h2 { font-size: 1rem; font-weight: 600; color: var(--muted); margin-bottom: .75r
 }
 .speaker-btn.active { border-color: var(--accent); background: rgba(99,102,241,.15); }
 
+/* Language toggle */
+.lang-toggle { display: flex; gap: .35rem; margin-bottom: 1.25rem; justify-content: center; }
+.lang-btn {
+  padding: .3rem .7rem; border-radius: 8px;
+  border: 1.5px solid var(--border); background: transparent;
+  color: var(--muted); font-size: .75rem; cursor: pointer; transition: .15s;
+}
+.lang-btn.active { border-color: var(--accent); color: var(--text); background: rgba(99,102,241,.1); }
+
 /* Mic button */
 .mic-wrap { display: flex; justify-content: center; margin-bottom: 1.5rem; }
 #mic-btn {

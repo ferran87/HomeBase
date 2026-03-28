@@ -23,6 +23,7 @@ htmlcov/
 
 # Database
 postgres_data/
+*.db
 
 # IDE
 .idea/

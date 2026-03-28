@@ -38,7 +38,8 @@ def _parse_date(value: str | None) -> date | None:
 
 async def route_confirmed_entry(entry: VoiceEntry, db: Session) -> str:
     """Write confirmed entry to the correct domain table. Returns table name."""
-    data = entry.extracted_data or {}
+    raw = entry.extracted_data or {}
+    data = raw.get("extracted_data", raw)
 
     if entry.category == "baby" and entry.entry_type == "diary_entry":
         log = BabyLog(

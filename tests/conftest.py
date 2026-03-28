@@ -1,19 +1,26 @@
 import uuid
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.base import Base
 from app.models.user import User
 from app.db.database import get_db
 
-# In-memory SQLite for tests (no PostgreSQL required)
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable FK support and relax type checking for SQLite test compat."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 @pytest.fixture(scope="function")
@@ -45,9 +52,9 @@ def client(db):
 
 @pytest.fixture
 def two_users(db):
-    """Seed two parent users for tests that need them."""
-    parent1 = User(id=uuid.uuid4(), name="Alex", email="alex@example.com")
-    parent2 = User(id=uuid.uuid4(), name="Sam", email="sam@example.com")
+    """Seed the two parent users used across tests."""
+    parent1 = User(id=uuid.uuid4(), name="Ferran", email="ferran@example.com")
+    parent2 = User(id=uuid.uuid4(), name="Marta", email="marta@example.com")
     db.add_all([parent1, parent2])
     db.commit()
     return parent1, parent2

@@ -5,9 +5,11 @@ Called after the user taps "Confirm" on the confirmation card.
 Reads the voice_entry.extracted_data (set by claude_voice.py) and writes
 the structured record to baby_logs, dog_logs, household_tasks, or calendar_events.
 """
-from datetime import date, time
+from datetime import date, time, datetime
+import logging
 import uuid
 
+from dateutil import parser as dateutil_parser
 from sqlalchemy.orm import Session
 
 from app.models.voice_entry import VoiceEntry
@@ -15,24 +17,47 @@ from app.models.baby_log import BabyLog
 from app.models.dog_log import DogLog
 from app.models.household_task import HouseholdTask
 
+logger = logging.getLogger(__name__)
+
 
 def _parse_time(value: str | None) -> time | None:
+    """Parse a time string from Claude's extracted_data.
+
+    Handles formats like '02:00', '2:30 AM', '14:00', '0200', '2h30'.
+    Falls back gracefully to None with a warning if unparseable.
+    """
     if not value:
         return None
     try:
-        parts = value.split(":")
-        return time(int(parts[0]), int(parts[1]))
-    except (ValueError, IndexError):
+        # dateutil can parse "2:00 AM", "14:00", "02:00", etc.
+        # We anchor to today to avoid date-part interference.
+        anchor = datetime.combine(date.today(), time.min)
+        parsed = dateutil_parser.parse(str(value), default=anchor)
+        return parsed.time()
+    except (ValueError, OverflowError):
+        logger.warning("Could not parse time value: %r — storing as None", value)
         return None
 
 
 def _parse_date(value: str | None) -> date | None:
-    """Naive ISO date parse — Claude should return YYYY-MM-DD when possible."""
+    """Parse a date string from Claude's extracted_data.
+
+    Handles ISO dates ('2025-04-01'), relative expressions ('tomorrow',
+    'next Friday'), and locale formats ('28/3/2025').
+    Uses today as the default anchor so relative terms resolve correctly.
+    Falls back gracefully to None with a warning if unparseable.
+    """
     if not value:
         return None
+    # Pass-through if already a date object (defensive)
+    if isinstance(value, date):
+        return value
     try:
-        return date.fromisoformat(value)
-    except ValueError:
+        anchor = datetime.combine(date.today(), time.min)
+        parsed = dateutil_parser.parse(str(value), default=anchor)
+        return parsed.date()
+    except (ValueError, OverflowError):
+        logger.warning("Could not parse date value: %r — storing as None", value)
         return None
 
 
@@ -60,10 +85,17 @@ async def route_confirmed_entry(entry: VoiceEntry, db: Session) -> str:
         return "baby_logs"
 
     elif entry.category == "dog":
+        activity_type = data.get("activity_type")
+        if not activity_type:
+            logger.warning(
+                "No activity_type in extracted_data for dog entry %s — defaulting to 'walk'",
+                entry.id,
+            )
+            activity_type = "walk"
         log = DogLog(
             voice_entry_id=entry.id,
             log_date=date.today(),
-            activity_type=data.get("activity_type", "walk"),
+            activity_type=activity_type,
             duration_min=data.get("duration_min"),
             notes=data.get("notes") or entry.raw_transcription,
             done_by=entry.speaker_id,

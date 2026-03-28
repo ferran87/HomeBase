@@ -12,7 +12,7 @@ a Google Calendar event.
 - **Backend:** Python 3.11+, FastAPI
 - **Frontend:** Plain HTML/JS served as static files from FastAPI
 - **Database:** PostgreSQL with SQLAlchemy ORM + Alembic migrations
-- **AI:** Anthropic Claude API (`claude-sonnet-4-6`) — handles audio transcription AND classification in one API call
+- **AI:** Anthropic Claude API (`claude-sonnet-4-5`) — classifies text (transcription done by browser Web Speech API)
 - **Calendar:** Google Calendar API (Phase 2, shared family calendar, single OAuth token)
 
 ## Key Directories
@@ -27,14 +27,19 @@ a Google Calendar event.
 ## Voice Pipeline Flow
 
 ```
-Audio (WebM/Opus from browser)
-  → POST /api/voice (speaker_id + audio file)
-  → app/services/claude_voice.py sends audio to Claude API
-  → Claude returns JSON: transcription + language + category + type + extracted_data + suggested_action
+Browser (Web Speech API — Chrome/Edge only)
+  → speech-to-text runs locally in browser
+  → POST /api/voice/classify  { text, speaker_id, language_hint }
+  → app/services/claude_voice.py sends TEXT to Claude API for classification
+  → Claude returns JSON: language + category + type + extracted_data + suggested_action
   → Frontend shows confirmation card
   → User confirms → POST /api/voice/confirm
   → app/services/entry_router.py writes to correct table (baby_logs / dog_logs / household_tasks / calendar_events)
 ```
+
+> **Note:** The MVP uses the browser's built-in Web Speech API for transcription (free, fast, ~1s).
+> Claude only receives and classifies text — it does NOT receive raw audio bytes.
+> Web Speech API requires Chrome or Edge. Safari/Firefox are not supported.
 
 ## Common Commands
 
@@ -57,7 +62,7 @@ pytest tests/ -v                              # Run tests
 ## Important Notes
 
 - Voice supports 3 languages: Catalan (`ca`), Spanish (`es`), English (`en`)
-- Claude API receives raw audio bytes and returns transcription + classification in ONE call
+- **Web Speech API** transcribes locally in browser; Claude only classifies text (no audio sent to API)
 - ALL entries require user confirmation before being written to DB (`confirmed = True`)
 - Calendar events go to ONE shared family Google Calendar (Phase 2)
 - `night_shifts` table tracks "who's on tonight" — Phase 1 essential feature

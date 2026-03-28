@@ -74,9 +74,11 @@ async def discard_entry(
 @router.get("/today")
 async def get_today_feed(db: Session = Depends(get_db)) -> list[dict]:
     """Return all confirmed voice entries from today, ordered by time."""
-    from datetime import date, datetime, timedelta, timezone
+    from datetime import datetime, timedelta, timezone
 
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    # Use UTC-anchored boundaries so the feed is correct regardless of server timezone
+    now_utc = datetime.now(timezone.utc)
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
     tomorrow_start = today_start + timedelta(days=1)
 
     entries = (

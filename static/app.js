@@ -13,6 +13,8 @@ async function init() {
   await loadShiftHistory();
   await loadFeed();
   setupMicButton();
+  // Mic is disabled until a speaker is selected
+  document.getElementById("mic-btn").disabled = true;
 }
 
 // ─── Users / Speaker toggle ───────────────────────────────────────────────────
@@ -45,6 +47,7 @@ function selectSpeaker(id, btn) {
   selectedSpeakerId = id;
   document.querySelectorAll(".speaker-btn").forEach((b) => b.classList.remove("active"));
   btn.classList.add("active");
+  document.getElementById("mic-btn").disabled = false;
 }
 
 // ─── Mic button + Web Speech API ──────────────────────────────────────────────
@@ -109,16 +112,13 @@ function setupMicButton() {
     if (isListening) {
       stopListening();
     } else {
-      startListening(finalTranscript = "");
+      finalTranscript = "";
+      startListening();
     }
   });
 }
 
 function startListening() {
-  if (!selectedSpeakerId) {
-    setStatus("Tap your name first.");
-    return;
-  }
   if (isListening) return;
 
   isListening = true;

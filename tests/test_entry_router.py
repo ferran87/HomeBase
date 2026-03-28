@@ -97,7 +97,7 @@ async def test_note_stays_in_voice_entries(db, two_users):
 
     result = await route_confirmed_entry(entry=entry, db=db)
 
-    assert result == "voice_entries"
+    assert result == "voice_entries (note)"
     # No record in other tables
     assert db.query(BabyLog).count() == 0
     assert db.query(DogLog).count() == 0

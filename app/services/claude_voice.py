@@ -27,7 +27,7 @@ Classify it and extract structured data.
 Family context:
 - Speaker: {speaker_name}
 - Partner: {partner_name}
-- Baby girl, newborn
+- Baby girl, newborn (formula-fed only)
 - One dog
 - Current date/time: {datetime}
 
@@ -44,10 +44,25 @@ Respond ONLY in JSON with this exact structure:
   "suggested_action": "store_diary_entry | create_calendar_event | create_task | store_note"
 }}
 
-For baby diary entries, extract: wake_time, feed_time, feed_type, diaper_count, diaper_type, sleep_time, medication, notes
-For dog logs, extract: activity_type, duration_min, notes
-For household tasks, extract: task, assigned_to (speaker | partner | both), due_date
-For calendar events, extract: event_title, date, time, duration_min
+Field extraction rules:
+- Baby diary entries: wake_time (HH:MM), feed_time (HH:MM), feed_type ("formula"|"breast"|"solid"),
+  amount_ml (integer ml, formula only), diaper_count (integer), diaper_type ("wet"|"soiled"|"mixed"),
+  sleep_time (HH:MM), medication (string), notes (string)
+- Dog logs: activity_type ("walk"|"feed"|"vet"|"grooming"|"medication"), duration_min (integer), notes
+- Household tasks: task (string), assigned_to ("speaker"|"partner"|"both"), due_date (YYYY-MM-DD)
+- Calendar events: event_title (string), event_date (YYYY-MM-DD), event_time (HH:MM),
+  duration_min (integer, default 60), notes (string)
+- Notes: topic (string), notes (string)
+
+For times always use 24-hour HH:MM format. For dates always use YYYY-MM-DD.
+"""
+
+
+NOTE_SUMMARY_PROMPT = """\
+Summarize the following note in one concise sentence (maximum 15 words).
+The note is about: {category}.
+Note: "{text}"
+Respond with ONLY the summary sentence, no punctuation at the end.
 """
 
 
@@ -120,3 +135,30 @@ async def classify_text(
     result["voice_entry_id"] = str(entry.id)
     result["transcription"] = transcription
     return result
+
+
+async def summarize_note(text: str, category: str) -> str:
+    """Generate a one-sentence AI summary for a note entry.
+
+    Called automatically when a note is confirmed so the notes view
+    can show a summary card without displaying the full raw transcription.
+    Returns an empty string if the API key is missing or the call fails.
+    """
+    api_key = settings.anthropic_api_key
+    if not api_key or api_key.startswith("your_"):
+        return ""
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=60,
+            messages=[
+                {
+                    "role": "user",
+                    "content": NOTE_SUMMARY_PROMPT.format(category=category, text=text),
+                }
+            ],
+        )
+        return response.content[0].text.strip()
+    except Exception:  # noqa: BLE001
+        return ""

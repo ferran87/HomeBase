@@ -6,6 +6,15 @@ let recognition = null;
 let isListening = false;
 let users = [];
 
+// Calendar state
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;  // 1-based
+let calEvents = [];  // events for current month
+let calSelectedDay = null;
+
+// Notes state
+let currentNoteCategory = "";
+
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -13,8 +22,17 @@ async function init() {
   await loadShiftHistory();
   await loadFeed();
   setupMicButton();
-  // Mic is disabled until a speaker is selected
   document.getElementById("mic-btn").disabled = true;
+}
+
+// ─── Tab navigation ───────────────────────────────────────────────────────────
+
+function switchTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+
+  if (tab === "calendar") loadCalendar();
+  if (tab === "notes") loadNotes();
 }
 
 // ─── Users / Speaker toggle ───────────────────────────────────────────────────
@@ -65,9 +83,6 @@ function setupMicButton() {
   recognition = new SpeechRecognition();
   recognition.continuous = true;
   recognition.interimResults = true;
-
-  // Auto-detect: browser will pick up the spoken language from these
-  // Catalan, Spanish, English
   recognition.lang = "ca-ES";
 
   let finalTranscript = "";
@@ -97,7 +112,6 @@ function setupMicButton() {
 
   recognition.onend = () => {
     if (isListening) {
-      // Stopped by user — process the result
       isListening = false;
       btn.classList.remove("recording");
       if (finalTranscript.trim()) {
@@ -120,7 +134,6 @@ function setupMicButton() {
 
 function startListening() {
   if (isListening) return;
-
   isListening = true;
   document.getElementById("mic-btn").classList.add("recording");
   setStatus("Listening…");
@@ -139,7 +152,7 @@ async function processTranscription(text) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: text,
+        text,
         speaker_id: selectedSpeakerId,
         language_hint: recognition.lang.split("-")[0],
       }),
@@ -189,6 +202,10 @@ document.getElementById("btn-confirm").onclick = async () => {
     hideConfirmCard();
     setStatus("Saved ✓");
     await loadFeed();
+    // Refresh the active tab if it might be affected
+    const activeTab = document.querySelector(".tab-btn.active")?.dataset.tab;
+    if (activeTab === "calendar") loadCalendar();
+    if (activeTab === "notes") loadNotes();
   } catch (e) {
     setStatus(`Error saving: ${e.message}`);
   }
@@ -270,7 +287,7 @@ async function loadShiftHistory() {
   } catch (_) {}
 }
 
-// ─── Daily feed ───────────────────────────────────────────────────────────────
+// ─── Daily feed (enhanced cards) ─────────────────────────────────────────────
 
 async function loadFeed() {
   try {
@@ -283,22 +300,264 @@ async function loadFeed() {
       return;
     }
 
-    const userMap = Object.fromEntries(users.map((u) => [u.id, u.name]));
-    container.innerHTML = entries
-      .map((e) => {
-        const t = new Date(e.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        return `
-          <div class="feed-item">
-            <div class="feed-item-header">
-              <span class="tag tag-${e.category}" style="margin:0">${e.category}</span>
-              <span style="font-size:.8rem;color:var(--muted)">${e.entry_type.replace(/_/g," ")}</span>
-              <span class="feed-time">${t}</span>
-            </div>
-            <div class="feed-text">${e.transcription}</div>
-          </div>`;
-      })
-      .join("");
+    container.innerHTML = entries.map(renderFeedCard).join("");
   } catch (_) {}
+}
+
+function renderFeedCard(e) {
+  const t = new Date(e.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const bl = e.baby_log;
+
+  // ── Formula feeding card ──────────────────────────
+  if (bl && bl.feed_time) {
+    const ml = bl.amount_ml ? `${bl.amount_ml} ml` : "—";
+    return `
+      <div class="feed-item">
+        <div class="feed-item-header">
+          <span class="tag tag-baby" style="margin:0">🍼 feeding</span>
+          <span class="feed-time">${bl.feed_time}</span>
+        </div>
+        <div class="feed-card-row">
+          <div class="feed-card-metric">
+            <span class="metric-val">${ml}</span>
+            <span class="metric-lbl">amount</span>
+          </div>
+          <span class="feed-card-meta">${bl.feed_type || "formula"}</span>
+        </div>
+      </div>`;
+  }
+
+  // ── Nappy / diaper card ───────────────────────────
+  if (bl && bl.diaper_type) {
+    const typeLabel = { wet: "💧 Wet", soiled: "💩 Soiled", mixed: "💧💩 Mixed" }[bl.diaper_type] || bl.diaper_type;
+    const count = bl.diaper_count ? `×${bl.diaper_count}` : "";
+    return `
+      <div class="feed-item">
+        <div class="feed-item-header">
+          <span class="tag tag-baby" style="margin:0">🧷 nappy</span>
+          <span class="feed-time">${t}</span>
+        </div>
+        <div class="feed-card-row">
+          <div class="feed-card-metric">
+            <span class="metric-val" style="font-size:.85rem">${typeLabel}</span>
+            <span class="metric-lbl">type ${count}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Sleep card ────────────────────────────────────
+  if (bl && (bl.wake_time || bl.sleep_time)) {
+    const range = [bl.wake_time && `awake ${bl.wake_time}`, bl.sleep_time && `asleep ${bl.sleep_time}`]
+      .filter(Boolean).join("  →  ");
+    return `
+      <div class="feed-item">
+        <div class="feed-item-header">
+          <span class="tag tag-baby" style="margin:0">😴 sleep</span>
+          <span class="feed-time">${t}</span>
+        </div>
+        <div class="feed-card-meta" style="margin-top:.25rem">${range}</div>
+      </div>`;
+  }
+
+  // ── Calendar event card ───────────────────────────
+  if (e.entry_type === "calendar_event") {
+    const ed = e.extracted_data?.extracted_data || e.extracted_data || {};
+    const title = ed.event_title || ed.title || e.transcription;
+    const date = ed.event_date || "";
+    const time = ed.event_time || "";
+    return `
+      <div class="feed-item">
+        <div class="feed-item-header">
+          <span class="tag tag-${e.category}" style="margin:0">📅 appointment</span>
+          <span class="feed-time">${t}</span>
+        </div>
+        <div class="feed-text">${title}${date ? ` · ${date}` : ""}${time ? ` at ${time}` : ""}</div>
+      </div>`;
+  }
+
+  // ── Note card ─────────────────────────────────────
+  if (e.entry_type === "note") {
+    const summary = e.summary || e.transcription;
+    return `
+      <div class="feed-item">
+        <div class="feed-item-header">
+          <span class="tag tag-${e.category}" style="margin:0">📝 note</span>
+          <span class="feed-time">${t}</span>
+        </div>
+        <div class="feed-text">${summary}</div>
+      </div>`;
+  }
+
+  // ── Default card (dog, household tasks, etc.) ─────
+  return `
+    <div class="feed-item">
+      <div class="feed-item-header">
+        <span class="tag tag-${e.category}" style="margin:0">${e.category}</span>
+        <span style="font-size:.8rem;color:var(--muted)">${e.entry_type.replace(/_/g, " ")}</span>
+        <span class="feed-time">${t}</span>
+      </div>
+      <div class="feed-text">${e.transcription}</div>
+    </div>`;
+}
+
+// ─── Calendar ────────────────────────────────────────────────────────────────
+
+async function loadCalendar() {
+  try {
+    const res = await fetch(`/api/calendar/events?year=${calYear}&month=${calMonth}`);
+    calEvents = await res.json();
+  } catch (_) {
+    calEvents = [];
+  }
+  renderCalendarGrid();
+  renderCalendarEvents(calSelectedDay);
+}
+
+function calNav(delta) {
+  calMonth += delta;
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  calSelectedDay = null;
+  loadCalendar();
+}
+
+function renderCalendarGrid() {
+  const MONTHS = ["January","February","March","April","May","June",
+                  "July","August","September","October","November","December"];
+  document.getElementById("cal-title").textContent = `${MONTHS[calMonth - 1]} ${calYear}`;
+
+  // Group events by day string "YYYY-MM-DD"
+  const eventsByDay = {};
+  calEvents.forEach((ev) => {
+    if (!eventsByDay[ev.event_date]) eventsByDay[ev.event_date] = [];
+    eventsByDay[ev.event_date].push(ev);
+  });
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const firstDay = new Date(calYear, calMonth - 1, 1);
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+
+  // Monday-first offset (0=Mo … 6=Su)
+  let startOffset = firstDay.getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+
+  // Remove old day cells (keep the 7 dow headers)
+  const grid = document.getElementById("cal-grid");
+  grid.querySelectorAll(".cal-day, .cal-day-empty").forEach((el) => el.remove());
+
+  // Empty cells before the 1st
+  for (let i = 0; i < startOffset; i++) {
+    const cell = document.createElement("div");
+    cell.className = "cal-day empty";
+    grid.appendChild(cell);
+  }
+
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const evs = eventsByDay[dateStr] || [];
+    const cell = document.createElement("div");
+    cell.className = "cal-day" +
+      (dateStr === todayStr ? " today" : "") +
+      (dateStr === calSelectedDay ? " selected" : "");
+    cell.innerHTML = `<span>${d}</span>`;
+
+    if (evs.length) {
+      const dots = document.createElement("div");
+      dots.className = "cal-dots";
+      evs.slice(0, 3).forEach((ev) => {
+        const dot = document.createElement("div");
+        dot.className = `cal-dot cal-dot-${ev.category}`;
+        dots.appendChild(dot);
+      });
+      cell.appendChild(dots);
+    }
+
+    cell.onclick = () => selectCalDay(dateStr, cell);
+    grid.appendChild(cell);
+  }
+}
+
+function selectCalDay(dateStr, cell) {
+  calSelectedDay = dateStr;
+  document.querySelectorAll(".cal-day").forEach((c) => c.classList.remove("selected"));
+  cell.classList.add("selected");
+  renderCalendarEvents(dateStr);
+}
+
+function renderCalendarEvents(dateStr) {
+  const container = document.getElementById("cal-events");
+  if (!dateStr) {
+    container.innerHTML = `<p class="muted-hint">Tap a day to see appointments</p>`;
+    return;
+  }
+  const evs = calEvents.filter((e) => e.event_date === dateStr);
+  if (!evs.length) {
+    const [y, m, d] = dateStr.split("-");
+    container.innerHTML = `<p class="muted-hint">No appointments on ${d}/${m}/${y}</p>`;
+    return;
+  }
+  container.innerHTML = evs.map((e) => `
+    <div class="cal-event-item">
+      <div class="cal-event-emoji">${e.emoji}</div>
+      <div class="cal-event-body">
+        <div class="cal-event-title">${e.title}</div>
+        <div class="cal-event-time">
+          ${e.event_time ? e.event_time : "All day"}
+          ${e.duration_min && e.duration_min !== 60 ? ` · ${e.duration_min} min` : ""}
+        </div>
+        ${e.notes ? `<div class="cal-event-notes">${e.notes}</div>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+// ─── Notes ───────────────────────────────────────────────────────────────────
+
+async function loadNotes() {
+  const url = currentNoteCategory
+    ? `/api/notes/?category=${currentNoteCategory}`
+    : "/api/notes/";
+  try {
+    const res = await fetch(url);
+    const notes = await res.json();
+    renderNotes(notes);
+  } catch (_) {
+    document.getElementById("notes-list").innerHTML =
+      `<p class="muted-hint">Could not load notes.</p>`;
+  }
+}
+
+function filterNotes(category) {
+  currentNoteCategory = category;
+  document.querySelectorAll(".filter-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.cat === category)
+  );
+  loadNotes();
+}
+
+function renderNotes(notes) {
+  const container = document.getElementById("notes-list");
+  if (!notes.length) {
+    container.innerHTML = `<p class="muted-hint">No notes yet. Say something like "Note: she seems to prefer …"</p>`;
+    return;
+  }
+  container.innerHTML = notes.map((n) => {
+    const d = new Date(n.created_at);
+    const dateLabel = d.toLocaleDateString([], { day: "numeric", month: "short" });
+    return `
+      <div class="note-card">
+        <div class="note-card-header">
+          <span class="tag tag-${n.category}" style="margin:0">${n.emoji} ${n.category}</span>
+          <span class="note-date">${dateLabel}</span>
+        </div>
+        ${n.summary
+          ? `<div class="note-summary">${n.summary}</div>
+             <div class="note-raw">${n.transcription}</div>`
+          : `<div class="note-summary">${n.transcription}</div>`
+        }
+      </div>`;
+  }).join("");
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

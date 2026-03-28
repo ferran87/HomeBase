@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HomeBase</title>
-  <link rel="stylesheet" href="/static/style.css?v=2" />
+  <link rel="stylesheet" href="/static/style.css?v=3" />
 </head>
 <body>
   <div class="container">
@@ -40,22 +40,67 @@
       </div>
     </div>
 
-    <!-- Night shift widget -->
-    <div id="shift-widget">
-      <h2>Tonight's shift</h2>
-      <div class="shift-toggle" id="shift-toggle">
-        <!-- Populated by app.js -->
+    <!-- Tab navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="feed" onclick="switchTab('feed')">📋 Feed</button>
+      <button class="tab-btn" data-tab="calendar" onclick="switchTab('calendar')">📅 Calendar</button>
+      <button class="tab-btn" data-tab="notes" onclick="switchTab('notes')">📝 Notes</button>
+    </nav>
+
+    <!-- ── FEED TAB ──────────────────────────────────────────────── -->
+    <div id="tab-feed" class="tab-panel active">
+
+      <!-- Night shift widget -->
+      <div id="shift-widget">
+        <h2>Tonight's shift</h2>
+        <div class="shift-toggle" id="shift-toggle"></div>
+        <div class="shift-history" id="shift-history"></div>
       </div>
-      <div class="shift-history" id="shift-history"></div>
+
+      <!-- Daily feed -->
+      <div id="feed">
+        <h2>Today</h2>
+        <div id="feed-items"></div>
+      </div>
     </div>
 
-    <!-- Daily feed -->
-    <div id="feed">
-      <h2>Today</h2>
-      <div id="feed-items"></div>
+    <!-- ── CALENDAR TAB ──────────────────────────────────────────── -->
+    <div id="tab-calendar" class="tab-panel">
+      <div class="cal-header">
+        <button class="cal-nav" id="cal-prev" onclick="calNav(-1)">◀</button>
+        <span id="cal-title" class="cal-title"></span>
+        <button class="cal-nav" id="cal-next" onclick="calNav(1)">▶</button>
+      </div>
+      <!-- Day-of-week headers -->
+      <div class="cal-grid" id="cal-grid">
+        <div class="cal-dow">Mo</div>
+        <div class="cal-dow">Tu</div>
+        <div class="cal-dow">We</div>
+        <div class="cal-dow">Th</div>
+        <div class="cal-dow">Fr</div>
+        <div class="cal-dow">Sa</div>
+        <div class="cal-dow">Su</div>
+        <!-- Day cells injected here by JS -->
+      </div>
+      <!-- Events for the selected day -->
+      <div id="cal-events">
+        <p class="muted-hint">Tap a day to see appointments</p>
+      </div>
     </div>
-  </div>
 
-  <script src="/static/app.js?v=2"></script>
+    <!-- ── NOTES TAB ─────────────────────────────────────────────── -->
+    <div id="tab-notes" class="tab-panel">
+      <div class="notes-filter">
+        <button class="filter-btn active" data-cat="" onclick="filterNotes('')">All</button>
+        <button class="filter-btn" data-cat="baby" onclick="filterNotes('baby')">🍼 Baby</button>
+        <button class="filter-btn" data-cat="dog" onclick="filterNotes('dog')">🐕 Dog</button>
+        <button class="filter-btn" data-cat="household" onclick="filterNotes('household')">🏠 Home</button>
+      </div>
+      <div id="notes-list"></div>
+    </div>
+
+  </div><!-- /container -->
+
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

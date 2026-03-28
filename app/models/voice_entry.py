@@ -25,6 +25,7 @@ class VoiceEntry(Base):
     language_detected: Mapped[str] = mapped_column(String(5), nullable=True)
     extracted_data: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), nullable=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # AI-generated summary for notes
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     speaker: Mapped["User"] = relationship(back_populates="voice_entries")  # noqa: F821

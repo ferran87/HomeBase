@@ -16,6 +16,7 @@ from app.models.voice_entry import VoiceEntry
 from app.models.baby_log import BabyLog
 from app.models.dog_log import DogLog
 from app.models.household_task import HouseholdTask
+from app.models.calendar_event import CalendarEvent
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,6 @@ def _parse_time(value: str | None) -> time | None:
     if not value:
         return None
     try:
-        # dateutil can parse "2:00 AM", "14:00", "02:00", etc.
-        # We anchor to today to avoid date-part interference.
         anchor = datetime.combine(date.today(), time.min)
         parsed = dateutil_parser.parse(str(value), default=anchor)
         return parsed.time()
@@ -49,7 +48,6 @@ def _parse_date(value: str | None) -> date | None:
     """
     if not value:
         return None
-    # Pass-through if already a date object (defensive)
     if isinstance(value, date):
         return value
     try:
@@ -73,6 +71,7 @@ async def route_confirmed_entry(entry: VoiceEntry, db: Session) -> str:
             wake_time=_parse_time(data.get("wake_time")),
             feed_time=_parse_time(data.get("feed_time")),
             feed_type=data.get("feed_type"),
+            amount_ml=data.get("amount_ml"),
             diaper_count=data.get("diaper_count"),
             diaper_type=data.get("diaper_type"),
             sleep_time=_parse_time(data.get("sleep_time")),
@@ -108,7 +107,7 @@ async def route_confirmed_entry(entry: VoiceEntry, db: Session) -> str:
         task = HouseholdTask(
             voice_entry_id=entry.id,
             title=data.get("task", entry.raw_transcription[:255]),
-            assigned_to=entry.speaker_id,  # default to speaker; can be edited in UI
+            assigned_to=entry.speaker_id,
             due_date=_parse_date(data.get("due_date")),
             status="pending",
         )
@@ -117,9 +116,37 @@ async def route_confirmed_entry(entry: VoiceEntry, db: Session) -> str:
         return "household_tasks"
 
     elif entry.entry_type == "calendar_event":
-        # Phase 2: create Google Calendar event — stub for now
-        # calendar_sync.create_event(entry, db)
-        return "calendar_events (Phase 2 — not yet synced to Google)"
+        event_date = _parse_date(data.get("event_date") or data.get("date"))
+        if not event_date:
+            logger.warning(
+                "No event_date for calendar_event entry %s — using today", entry.id
+            )
+            event_date = date.today()
 
-    # Notes and reminders: stored only in voice_entries (no separate table)
+        event = CalendarEvent(
+            voice_entry_id=entry.id,
+            category=entry.category,
+            title=data.get("event_title") or data.get("title") or entry.raw_transcription[:255],
+            event_date=event_date,
+            event_time=_parse_time(data.get("event_time") or data.get("time")),
+            duration_min=int(data.get("duration_min") or 60),
+            notes=data.get("notes"),
+        )
+        db.add(event)
+        db.commit()
+        return "calendar_events"
+
+    elif entry.entry_type == "note":
+        # Auto-generate summary via Claude and store on the voice_entry
+        from app.services.claude_voice import summarize_note
+        summary = await summarize_note(
+            text=entry.raw_transcription,
+            category=entry.category,
+        )
+        if summary:
+            entry.summary = summary
+            db.commit()
+        return "voice_entries (note)"
+
+    # Reminders and anything else: stored only in voice_entries
     return "voice_entries"

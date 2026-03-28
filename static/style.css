@@ -11,6 +11,7 @@
   --muted: #94a3b8;
   --accent: #6366f1;
   --danger: #f87171;
+  --success: #34d399;
   --radius: 12px;
 }
 
@@ -54,6 +55,7 @@ h2 { font-size: 1rem; font-weight: 600; color: var(--muted); margin-bottom: .75r
   display: flex; align-items: center; justify-content: center;
   user-select: none;
 }
+#mic-btn:disabled { opacity: .4; cursor: not-allowed; }
 #mic-btn.recording { border-color: var(--danger); background: rgba(248,113,113,.15); animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,.4); } 50% { box-shadow: 0 0 0 12px rgba(248,113,113,0); } }
 
@@ -79,7 +81,25 @@ h2 { font-size: 1rem; font-weight: 600; color: var(--muted); margin-bottom: .75r
 .btn-confirm { background: var(--accent); color: #fff; flex: 1; }
 .btn-discard { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
 
-/* Night shift widget */
+/* ── Tab navigation ──────────────────────────────────────────────── */
+.tab-nav {
+  display: flex; gap: .35rem; margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border); padding-bottom: .75rem;
+}
+.tab-btn {
+  flex: 1; padding: .45rem .5rem; border-radius: 8px;
+  border: 1.5px solid transparent; background: transparent;
+  color: var(--muted); font-size: .78rem; font-weight: 500; cursor: pointer; transition: .15s;
+}
+.tab-btn.active {
+  border-color: var(--accent); color: var(--text); background: rgba(99,102,241,.12);
+}
+
+/* ── Tab panels ─────────────────────────────────────────────────── */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Night shift widget ─────────────────────────────────────────── */
 #shift-widget {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 1rem; margin-bottom: 1.5rem;
@@ -94,7 +114,7 @@ h2 { font-size: 1rem; font-weight: 600; color: var(--muted); margin-bottom: .75r
 .shift-history { font-size: .8rem; color: var(--muted); }
 .shift-row { display: flex; justify-content: space-between; padding: .2rem 0; }
 
-/* Daily feed */
+/* ── Daily feed ─────────────────────────────────────────────────── */
 #feed { margin-bottom: 2rem; }
 .feed-item {
   background: var(--surface); border: 1px solid var(--border);
@@ -103,6 +123,96 @@ h2 { font-size: 1rem; font-weight: 600; color: var(--muted); margin-bottom: .75r
 .feed-item-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
 .feed-time { font-size: .75rem; color: var(--muted); margin-left: auto; }
 .feed-text { font-size: .85rem; color: var(--muted); }
+
+/* Structured feed cards */
+.feed-card-row {
+  display: flex; align-items: center; gap: .75rem; padding: .1rem 0;
+}
+.feed-card-metric {
+  display: flex; flex-direction: column; align-items: center;
+  background: rgba(255,255,255,.05); border-radius: 8px;
+  padding: .3rem .6rem; min-width: 52px;
+}
+.feed-card-metric .metric-val { font-size: 1.05rem; font-weight: 700; line-height: 1.1; }
+.feed-card-metric .metric-lbl { font-size: .6rem; color: var(--muted); text-transform: uppercase; }
+.feed-card-meta { font-size: .8rem; color: var(--muted); }
+
+/* ── Calendar tab ───────────────────────────────────────────────── */
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .85rem;
+}
+.cal-title { font-size: 1rem; font-weight: 600; }
+.cal-nav {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; width: 32px; height: 32px;
+  cursor: pointer; font-size: .85rem; display: flex; align-items: center; justify-content: center;
+}
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  margin-bottom: 1rem;
+}
+.cal-dow {
+  text-align: center; font-size: .65rem; font-weight: 600;
+  color: var(--muted); padding: .3rem 0; text-transform: uppercase;
+}
+.cal-day {
+  aspect-ratio: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  border-radius: 8px; font-size: .8rem; cursor: pointer;
+  border: 1.5px solid transparent; transition: .12s; position: relative;
+}
+.cal-day:hover { background: rgba(255,255,255,.05); }
+.cal-day.today { border-color: var(--accent); font-weight: 700; }
+.cal-day.selected { background: rgba(99,102,241,.2); border-color: var(--accent); }
+.cal-day.other-month { color: var(--muted); opacity: .4; }
+.cal-day.empty { cursor: default; }
+.cal-dots { display: flex; gap: 2px; justify-content: center; flex-wrap: wrap; max-width: 28px; }
+.cal-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+}
+.cal-dot-baby { background: var(--baby); }
+.cal-dot-dog { background: var(--dog); }
+.cal-dot-household { background: var(--household); }
+
+#cal-events { margin-bottom: 2rem; }
+.cal-event-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: .85rem 1rem; margin-bottom: .5rem;
+  display: flex; gap: .75rem; align-items: flex-start;
+}
+.cal-event-emoji { font-size: 1.4rem; line-height: 1; flex-shrink: 0; }
+.cal-event-body { flex: 1; }
+.cal-event-title { font-size: .95rem; font-weight: 600; margin-bottom: .2rem; }
+.cal-event-time { font-size: .78rem; color: var(--muted); }
+.cal-event-notes { font-size: .8rem; color: var(--muted); margin-top: .3rem; font-style: italic; }
+.muted-hint { font-size: .8rem; color: var(--muted); text-align: center; padding: 1.5rem 0; }
+
+/* ── Notes tab ──────────────────────────────────────────────────── */
+.notes-filter {
+  display: flex; gap: .35rem; margin-bottom: 1rem; flex-wrap: wrap;
+}
+.filter-btn {
+  padding: .3rem .7rem; border-radius: 8px;
+  border: 1.5px solid var(--border); background: transparent;
+  color: var(--muted); font-size: .75rem; cursor: pointer; transition: .15s;
+}
+.filter-btn.active { border-color: var(--accent); color: var(--text); background: rgba(99,102,241,.1); }
+
+#notes-list { margin-bottom: 2rem; }
+.note-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1rem; margin-bottom: .75rem;
+}
+.note-card-header {
+  display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem;
+}
+.note-date { font-size: .75rem; color: var(--muted); margin-left: auto; }
+.note-summary { font-size: .9rem; font-weight: 500; margin-bottom: .4rem; }
+.note-raw {
+  font-size: .8rem; color: var(--muted); font-style: italic;
+  border-top: 1px solid var(--border); padding-top: .4rem; margin-top: .4rem;
+}
 
 /* Status message */
 #status { min-height: 1.2rem; font-size: .8rem; color: var(--muted); text-align: center; margin-bottom: 1rem; }

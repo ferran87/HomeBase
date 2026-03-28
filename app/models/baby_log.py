@@ -15,7 +15,8 @@ class BabyLog(Base):
     log_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
     wake_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     feed_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    feed_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # breast, bottle, solid
+    feed_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # formula, breast, solid
+    amount_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)    # ml consumed (formula feeds)
     diaper_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     diaper_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # wet, dirty, both
     sleep_time: Mapped[time | None] = mapped_column(Time, nullable=True)

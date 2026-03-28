@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.services.claude_voice import classify_text
 from app.services.entry_router import route_confirmed_entry
 from app.models.voice_entry import VoiceEntry
+from app.models.baby_log import BabyLog
 
 router = APIRouter()
 
@@ -91,15 +92,38 @@ async def get_today_feed(db: Session = Depends(get_db)) -> list[dict]:
         .order_by(VoiceEntry.created_at.asc())
         .all()
     )
-    return [
-        {
+    # Build a map of voice_entry_id → BabyLog for enriching feed cards
+    entry_ids = [e.id for e in entries]
+    baby_logs = (
+        db.query(BabyLog)
+        .filter(BabyLog.voice_entry_id.in_(entry_ids))
+        .all()
+    ) if entry_ids else []
+    baby_log_map = {bl.voice_entry_id: bl for bl in baby_logs}
+
+    result = []
+    for e in entries:
+        bl = baby_log_map.get(e.id)
+        item: dict = {
             "id": str(e.id),
             "category": e.category,
             "entry_type": e.entry_type,
             "transcription": e.raw_transcription,
+            "summary": e.summary,
             "language": e.language_detected,
             "extracted_data": e.extracted_data,
             "created_at": e.created_at.isoformat(),
         }
-        for e in entries
-    ]
+        if bl:
+            item["baby_log"] = {
+                "feed_time": bl.feed_time.strftime("%H:%M") if bl.feed_time else None,
+                "feed_type": bl.feed_type,
+                "amount_ml": bl.amount_ml,
+                "diaper_count": bl.diaper_count,
+                "diaper_type": bl.diaper_type,
+                "wake_time": bl.wake_time.strftime("%H:%M") if bl.wake_time else None,
+                "sleep_time": bl.sleep_time.strftime("%H:%M") if bl.sleep_time else None,
+                "medication": bl.medication,
+            }
+        result.append(item)
+    return result
